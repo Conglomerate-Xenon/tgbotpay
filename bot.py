@@ -16,12 +16,14 @@ logger = logging.getLogger(__name__)
 
 # Конфигурация
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8085507188:AAFbQP91yzQXXiGa8frag59YTtmeyvHNhrg")
+TON_ADDRESS = os.getenv("TON_ADDRESS", "UQDFx5huuwaQge8xCxkjF4P80ZwvV23zphnCPwYF4XtOYkXs") 
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://tgbotpay.onrender.com")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 # Инициализация бота
 bot = Bot(token=BOT_TOKEN)
+Bot.set_current(bot)  # ВАЖНО: устанавливаем текущий бот
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
@@ -43,9 +45,11 @@ async def ping(message: types.Message):
 
 @dp.message_handler(commands=['pay_ton'])
 async def pay_ton(message: types.Message):
-    await message.answer(f"Отправь оплату 0.45 TON на адрес:\n`{TON_ADDRESS}`\n"
-                        f"Я засчитаю оплату автоматически.",
-                        parse_mode="Markdown")
+    await message.answer(
+        f"Отправь оплату 0.45 TON на адрес:\n`{TON_ADDRESS}`\n"
+        f"Я засчитаю оплату автоматически.",
+        parse_mode="Markdown"
+    )
 
 @dp.message_handler(commands=['pay_stars'])
 async def pay_stars(message: types.Message):
@@ -57,15 +61,19 @@ async def pay_stars(message: types.Message):
         users[user_id]["stars"] -= 60
         await message.answer("✨ Оплата 60 звёздами прошла успешно!")
     else:
-        await message.answer(f"Недостаточно звёзд! Нужно 60 ✨ (у вас {users[user_id]['stars']})")
+        await message.answer(
+            f"Недостаточно звёзд! Нужно 60 ✨ (у вас {users[user_id]['stars']})"
+        )
 
 @dp.message_handler(commands=['stars'])
 async def show_stars(message: types.Message):
     user_id = message.from_user.id
     data = users.get(user_id, {"stars": 0, "ton_paid": 0})
-    await message.answer(f"🌟 Твои балансы:\n"
-                        f"- Звёзды: {data['stars']} ✨\n"
-                        f"- Оплачено TON: {data['ton_paid']} TON")
+    await message.answer(
+        f"🌟 Твои балансы:\n"
+        f"- Звёзды: {data['stars']} ✨\n"
+        f"- Оплачено TON: {data['ton_paid']} TON"
+    )
 
 @dp.message_handler()
 async def fallback(message: types.Message):
@@ -133,7 +141,10 @@ async def start_server():
     await site.start()
     
     logger.info(f"Server started on port {port}")
-    
+
+    # Запуск фоновой задачи
+    asyncio.create_task(check_ton_payments())
+
     # Бесконечный цикл
     while True:
         await asyncio.sleep(3600)
