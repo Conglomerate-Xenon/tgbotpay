@@ -7,54 +7,39 @@ import asyncio
 import logging
 from aiohttp.web import Response
 
-# === Настройка логов ===
+# Настройка логов
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# === Конфигурация ===
+# Конфигурация
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8085507188:AAFbQP91yzQXXiGa8frag59YTtmeyvHNhrg")
-TON_ADDRESS = "UQDFx5huuwaQge8xCxkjF4P80ZwvV23zphnCPwYF4XtOYkXs"
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://tgbotpay.onrender.com")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-# === Инициализация бота ===
+# Инициализация бота
 bot = Bot(token=BOT_TOKEN)
-Bot.set_current(bot)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-# Словари
+# Глобальные переменные
 users = {}
 last_balance = 0
 
-# === Обработчики команд ===
+# Обработчики команд
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    try:
-        user_id = message.from_user.id
-        if user_id not in users:
-            users[user_id] = {"stars": 0, "ton_paid": 0}
-        
-        logger.info(f"Processing /start for user {user_id}")
-        await message.answer("Привет! Вот доступные команды:\n"
-                           "/pay_ton - Оплата TON\n"
-                           "/pay_stars - Оплата звёздами\n"
-                           "/stars - Баланс\n"
-                           "/ping - Проверка связи")
-    except Exception as e:
-        logger.error(f"Error in start handler: {e}")
+    user_id = message.from_user.id
+    if user_id not in users:
+        users[user_id] = {"stars": 0, "ton_paid": 0}
+    await message.answer("Бот работает! Команды:\n/pay_ton\n/pay_stars\n/stars\n/ping")
 
 @dp.message_handler(commands=['ping'])
 async def ping(message: types.Message):
-    try:
-        logger.info(f"Ping from {message.from_user.id}")
-        await message.answer("🏓 Pong! Бот активен")
-    except Exception as e:
-        logger.error(f"Ping error: {e}")
+    await message.answer("🏓 Pong! Бот активен")
 
 @dp.message_handler(commands=['pay_ton'])
 async def pay_ton(message: types.Message):
@@ -110,83 +95,53 @@ async def check_ton_payments():
             logger.error(f"TON CHECK ERROR: {e}")
         await asyncio.sleep(10)
 
-# === Улучшенный обработчик вебхуков ===
+# Улучшенный обработчик вебхуков
 async def webhook_handler(request):
     try:
         data = await request.json()
-        logger.info(f"Incoming update: {data}")
+        logger.info(f"Received update: {data}")
         
-        # Быстрая проверка валидности данных
-        if not data.get('update_id'):
-            logger.warning("Invalid update received")
-            return Response(text="OK")
-            
         update = types.Update(**data)
-        
-        # Обработка в отдельной задаче
-        asyncio.create_task(safe_process_update(update))
+        asyncio.create_task(process_update_safely(update))
         
         return Response(text="OK")
     except Exception as e:
-        logger.error(f"Webhook handler error: {e}")
+        logger.error(f"Webhook error: {e}")
         return Response(text="OK")
 
-async def safe_process_update(update: types.Update):
+async def process_update_safely(update: types.Update):
     try:
         await dp.process_update(update)
     except Exception as e:
-        logger.error(f"Update processing error: {e}")
+        logger.error(f"Update processing failed: {e}")
 
-# === Запуск сервера ===
-async def on_startup(app):
-    try:
-        await bot.delete_webhook()
-        await bot.set_webhook(WEBHOOK_URL)
-        logger.info("Webhook set successfully")
-        
-        # Запуск фоновых задач
-        asyncio.create_task(check_ton_payments())
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
-
-async def on_shutdown(app):
-    try:
-        await bot.delete_webhook()
-        await dp.storage.close()
-        await dp.storage.wait_closed()
-        logger.info("Bot shutdown complete")
-    except Exception as e:
-        logger.error(f"Shutdown error: {e}")
-
-def main():
+# Запуск сервера
+async def start_server():
     app = web.Application()
     app.router.add_post(WEBHOOK_PATH, webhook_handler)
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
     
-    # Установка лимитов для aiohttp
-    runner = web.AppRunner(app, handle_signals=True)
-    return runner
+    # Установка вебхука
+    await bot.delete_webhook()
+    await bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Webhook set to {WEBHOOK_URL}")
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    port = int(os.getenv("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    
+    logger.info(f"Server started on port {port}")
+    
+    # Бесконечный цикл
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 10000))
-    runner = main()
-    
-    async def start_app():
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', port)
-        await site.start()
-        logger.info(f"Server started on port {port}")
-        
-        # Бесконечное ожидание
-        while True:
-            await asyncio.sleep(3600)
-    
-    loop = asyncio.get_event_loop()
     try:
-        loop.run_until_complete(start_app())
+        asyncio.run(start_server())
     except KeyboardInterrupt:
-        pass
-    finally:
-        loop.run_until_complete(runner.cleanup())
-        loop.close()
+        logger.info("Server stopped")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
