@@ -4,15 +4,22 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiohttp import web
 import requests
 import asyncio
+import logging
 
-# === НАСТРОЙКИ ===
-BOT_TOKEN = "8085507188:AAFbQP91yzQXXiGa8frag59YTtmeyvHNhrg"
+# === Настройка логов ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# === Конфигурация ===
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8085507188:AAFbQP91yzQXXiGa8frag59YTtmeyvHNhrg")
 TON_ADDRESS = "UQDFx5huuwaQge8xCxkjF4P80ZwvV23zphnCPwYF4XtOYkXs"
-WEBHOOK_HOST = "https://tgbotpay.onrender.com"  # Ваш URL на Render
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://tgbotpay.onrender.com")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
+# === Инициализация бота ===
 bot = Bot(token=BOT_TOKEN)
+Bot.set_current(bot)  # Важно для контекста
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
@@ -20,25 +27,29 @@ dp = Dispatcher(bot, storage=storage)
 users = {}         # user_id: {"stars": int, "ton_paid": float}
 last_balance = 0   # Предыдущий баланс TON
 
-# === Команда /start ===
+# === Обработчики команд ===
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     user_id = message.from_user.id
     if user_id not in users:
         users[user_id] = {"stars": 0, "ton_paid": 0}
     await message.answer("Привет! Ты можешь оплатить:\n"
-                         "- 💸 0.45 TON: /pay_ton\n"
-                         "- ✨ 60 звёзд: /pay_stars\n"
-                         "- 💼 Проверить баланс: /stars")
+                        "- 💸 0.45 TON: /pay_ton\n"
+                        "- ✨ 60 звёзд: /pay_stars\n"
+                        "- 💼 Проверить баланс: /stars\n"
+                        "- 🏓 Проверка связи: /ping")
 
-# === Команда /pay_ton ===
+@dp.message_handler(commands=['ping'])
+async def ping(message: types.Message):
+    logger.info("Ping received!")
+    await message.answer("🏓 Pong!")
+
 @dp.message_handler(commands=['pay_ton'])
 async def pay_ton(message: types.Message):
     await message.answer(f"Отправь оплату 0.45 TON на адрес:\n`{TON_ADDRESS}`\n"
-                         f"Я засчитаю оплату автоматически.",
-                         parse_mode="Markdown")
+                        f"Я засчитаю оплату автоматически.",
+                        parse_mode="Markdown")
 
-# === Команда /pay_stars ===
 @dp.message_handler(commands=['pay_stars'])
 async def pay_stars(message: types.Message):
     user_id = message.from_user.id
@@ -51,20 +62,18 @@ async def pay_stars(message: types.Message):
     else:
         await message.answer(f"Недостаточно звёзд! Нужно 60 ✨ (у вас {users[user_id]['stars']})")
 
-# === Команда /stars ===
 @dp.message_handler(commands=['stars'])
 async def show_stars(message: types.Message):
     user_id = message.from_user.id
     data = users.get(user_id, {"stars": 0, "ton_paid": 0})
     await message.answer(f"🌟 Твои балансы:\n"
-                         f"- Звёзды: {data['stars']} ✨\n"
-                         f"- Оплачено TON: {data['ton_paid']} TON")
-# === Команда /ping ===    
-@dp.message_handler(commands=['ping'])
-async def ping(message: types.Message):
-    print("Ping received!")
-    await message.answer("🏓 Pong!")
-    
+                        f"- Звёзды: {data['stars']} ✨\n"
+                        f"- Оплачено TON: {data['ton_paid']} TON")
+
+@dp.message_handler()
+async def fallback(message: types.Message):
+    await message.answer("Используй команды:\n/pay_ton\n/pay_stars\n/stars\n/ping")
+
 # === Фоновая задача: отслеживание TON ===
 async def check_ton_payments():
     global last_balance
@@ -83,75 +92,47 @@ async def check_ton_payments():
                     try:
                         await bot.send_message(user_id, f"💸 Получено {delta} TON. Спасибо за оплату!")
                     except Exception as e:
-                        print(f"[ERROR] Не удалось отправить сообщение {user_id}: {e}")
+                        logger.error(f"Не удалось отправить сообщение {user_id}: {e}")
 
         except Exception as e:
-            print(f"[TON CHECK ERROR] {e}")
+            logger.error(f"TON CHECK ERROR: {e}")
         await asyncio.sleep(10)
-
-# === Обработка всех других сообщений ===
-@dp.message_handler()
-async def fallback(message: types.Message):
-    await message.answer("Используй команды:\n/pay_ton\n/pay_stars\n/stars")
 
 # === Обработчик вебхуков ===
 async def webhook_handler(request):
     try:
-        # Логируем входящий запрос
-        print("Incoming request detected!")
-        
-        # Обязательно читаем JSON
         data = await request.json()
-        print("Raw data:", data)
+        logger.info(f"Incoming update: {data}")
         
-        # Создаем Update объект
         update = types.Update(**data)
-        
-        # Обрабатываем update
         await dp.process_update(update)
-        
-        # Всегда возвращаем 200!
         return web.Response(text="OK")
-        
     except Exception as e:
-        # Логируем ошибку
-        print(f"CRITICAL ERROR: {str(e)}")
-        # Но все равно возвращаем 200, чтобы Telegram не отключил вебхук
+        logger.error(f"Webhook error: {e}")
         return web.Response(text="OK", status=200)
 
 # === Запуск сервера ===
 async def on_startup(app):
-    # Устанавливаем вебхук
     await bot.set_webhook(WEBHOOK_URL)
-    # Запускаем фоновую задачу
     asyncio.create_task(check_ton_payments())
-    print("Bot started!")
+    logger.info("Bot started!")
 
 async def on_shutdown(app):
-    # Удаляем вебхук при завершении
     await bot.delete_webhook()
-    print("Bot stopped!")
+    await dp.storage.close()
+    await dp.storage.wait_closed()
+    logger.info("Bot stopped")
 
-def main():
-    app = web.Application()
-    
-    # Добавляем обработчик вебхуков
-    app.router.add_post(WEBHOOK_PATH, webhook_handler)
-    
-    # Добавляем обработчики событий
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
-    
-    # Проверяем, есть ли порт в переменных окружения (для Render)
-    port = int(os.environ.get("PORT", 10000))
-    
-    # Запускаем приложение
+app = web.Application()
+app.router.add_post(WEBHOOK_PATH, webhook_handler)
+app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 10000))
     web.run_app(
         app,
         host="0.0.0.0",
         port=port,
-        access_log=None  # Отключаем логи доступа для уменьшения шума
+        access_log=None
     )
-
-if __name__ == "__main__":
-    main()
