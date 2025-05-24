@@ -1,13 +1,11 @@
 import os
 from aiogram import Bot, Dispatcher, types
-from aiogram.dispatcher.webhook import SendMessage
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiohttp import web
 import requests
 import asyncio
 
 # === НАСТРОЙКИ ===
-BOT_ON_RENDER = "RENDER" not in os.environ  # Проверка, запущен ли код на Render
 BOT_TOKEN = "8085507188:AAFbQP91yzQXXiGa8frag59YTtmeyvHNhrg"
 TON_ADDRESS = "UQDFx5huuwaQge8xCxkjF4P80ZwvV23zphnCPwYF4XtOYkXs"
 WEBHOOK_HOST = "https://tgbotpay.onrender.com"  # Ваш URL на Render
@@ -91,21 +89,50 @@ async def check_ton_payments():
 async def fallback(message: types.Message):
     await message.answer("Используй команды:\n/pay_ton\n/pay_stars\n/stars")
 
-# === Настройка вебхуков ===
-async def on_startup(app):
-    await bot.set_webhook(WEBHOOK_URL)
-    asyncio.create_task(check_ton_payments())  # Запуск фоновой задачи
-
-async def on_shutdown(app):
-    await bot.delete_webhook()
+# === Обработчик вебхуков ===
+async def webhook_handler(request):
+    try:
+        # Получаем обновление от Telegram
+        update = types.Update(**(await request.json()))
+        await dp.process_update(update)
+        return web.Response()
+    except Exception as e:
+        print(f"Error processing update: {e}")
+        return web.Response(status=500)
 
 # === Запуск сервера ===
-if __name__ == "__main__":
+async def on_startup(app):
+    # Устанавливаем вебхук
+    await bot.set_webhook(WEBHOOK_URL)
+    # Запускаем фоновую задачу
+    asyncio.create_task(check_ton_payments())
+    print("Bot started!")
+
+async def on_shutdown(app):
+    # Удаляем вебхук при завершении
+    await bot.delete_webhook()
+    print("Bot stopped!")
+
+def main():
     app = web.Application()
-    app.router.add_post(WEBHOOK_PATH, dp._check_webhook)  # Обработчик вебхуков
+    
+    # Добавляем обработчик вебхуков
+    app.router.add_post(WEBHOOK_PATH, webhook_handler)
+    
+    # Добавляем обработчики событий
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
+    
+    # Проверяем, есть ли порт в переменных окружения (для Render)
+    port = int(os.environ.get("PORT", 10000))
+    
+    # Запускаем приложение
+    web.run_app(
+        app,
+        host="0.0.0.0",
+        port=port,
+        access_log=None  # Отключаем логи доступа для уменьшения шума
+    )
 
-    # Запуск на Render (порт берется из переменной окружения)
-    web.run_app(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
+if __name__ == "__main__":
+    main()
