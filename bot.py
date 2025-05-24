@@ -37,7 +37,14 @@ async def start(message: types.Message):
     user_id = message.from_user.id
     if user_id not in users:
         users[user_id] = {"stars": 0, "ton_paid": 0}
-    await message.answer("Бот работает! Команды:\n/pay_ton\n/pay_stars\n/stars\n/ping")
+    await message.answer(
+    "*Бот работает!*\n\n"
+    "`/pay_ton` – оплатить в TON\n"
+    "`/pay_stars` – оплатить звёздами\n"
+    "`/stars` – показать баланс\n"
+    "`/ping` – проверить работу бота",
+    parse_mode="Markdown"
+)
 
 @dp.message_handler(commands=['ping'])
 async def ping(message: types.Message):
