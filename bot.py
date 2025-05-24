@@ -59,7 +59,12 @@ async def show_stars(message: types.Message):
     await message.answer(f"🌟 Твои балансы:\n"
                          f"- Звёзды: {data['stars']} ✨\n"
                          f"- Оплачено TON: {data['ton_paid']} TON")
-
+# === Команда /ping ===    
+@dp.message_handler(commands=['ping'])
+async def ping(message: types.Message):
+    print("Ping received!")
+    await message.answer("🏓 Pong!")
+    
 # === Фоновая задача: отслеживание TON ===
 async def check_ton_payments():
     global last_balance
@@ -92,13 +97,27 @@ async def fallback(message: types.Message):
 # === Обработчик вебхуков ===
 async def webhook_handler(request):
     try:
-        # Получаем обновление от Telegram
-        update = types.Update(**(await request.json()))
+        # Логируем входящий запрос
+        print("Incoming request detected!")
+        
+        # Обязательно читаем JSON
+        data = await request.json()
+        print("Raw data:", data)
+        
+        # Создаем Update объект
+        update = types.Update(**data)
+        
+        # Обрабатываем update
         await dp.process_update(update)
-        return web.Response()
+        
+        # Всегда возвращаем 200!
+        return web.Response(text="OK")
+        
     except Exception as e:
-        print(f"Error processing update: {e}")
-        return web.Response(status=500)
+        # Логируем ошибку
+        print(f"CRITICAL ERROR: {str(e)}")
+        # Но все равно возвращаем 200, чтобы Telegram не отключил вебхук
+        return web.Response(text="OK", status=200)
 
 # === Запуск сервера ===
 async def on_startup(app):
