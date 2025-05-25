@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher, types
@@ -30,20 +29,6 @@ dp = Dispatcher(bot, storage=storage)
 # Глобальные переменные
 users = {}
 last_balance = 0
-
-# Загрузка пользователей из файла
-def load_users():
-    if os.path.exists("users.json"):
-        with open("users.json", "r") as f:
-            return json.load(f)
-    return {}
-
-# Сохранение пользователей
-def save_users():
-    with open("users.json", "w") as f:
-        json.dump(users, f)
-
-users = load_users()
 
 # Команды
 @dp.message_handler(commands=['start'])
