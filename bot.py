@@ -53,14 +53,15 @@ async def start(message: types.Message):
         users[user_id] = {"stars": 0, "ton_paid": 0}
         save_users()
     await message.answer(
-        "\U0001F916 *Бот активен!*\n\n"
-        "\u2728 Команды:\n"
-        "`/pay_ton` – оплатить в TON \U0001F4B5\n"
-        "`/pay_stars` – оплатить звёздами ✨\n"
-        "`/stars` – показать баланс \U0001F4CA\n"
-        "`/ping` – проверить работу бота \U0001F3D3",
-        parse_mode="Markdown"
-    )
+    "🤖 <b>Бот активен!</b>\n\n"
+    "✨ <b>Команды:</b>\n"
+    "/pay_ton – оплатить в TON 💵\n"
+    "/pay_stars – оплатить звёздами ✨\n"
+    "/stars – показать баланс 📊\n"
+    "/ping – проверить работу бота 🏓",
+    parse_mode="HTML"
+)
+
 
 @dp.message_handler(commands=['ping'])
 async def ping(message: types.Message):
