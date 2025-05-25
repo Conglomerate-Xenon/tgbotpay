@@ -5,6 +5,10 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiohttp import web, ClientSession
 from aiohttp.web import Response
+from dotenv import load_dotenv
+
+# Загрузка переменных из .env
+load_dotenv()
 
 # Настройка логов
 logging.basicConfig(
@@ -13,12 +17,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Конфигурация
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8085507188:AAFbQP91yzQXXiGa8frag59YTtmeyvHNhrg")
-TON_ADDRESS = os.getenv("TON_ADDRESS", "UQDFx5huuwaQge8xCxkjF4P80ZwvV23zphnCPwYF4XtOYkXs")
-WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://tgbotpay.onrender.com")
+# Конфигурация из переменных окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+TON_ADDRESS = os.getenv("TON_ADDRESS")
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+PORT = int(os.getenv("PORT", 10000))
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
@@ -134,7 +139,7 @@ async def webhook_handler(request):
         logger.info(f"Received update: {data}")
 
         from aiogram import Bot  # для set_current
-        Bot.set_current(bot)  # ✅ Исправление ошибки context
+        Bot.set_current(bot)
         update = types.Update(**data)
         await dp.process_update(update)
 
@@ -155,11 +160,10 @@ async def start_server():
     runner = web.AppRunner(app)
     await runner.setup()
 
-    port = int(os.getenv("PORT", 10000))
-    site = web.TCPSite(runner, '0.0.0.0', port)
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
 
-    logger.info(f"Server started on port {port}")
+    logger.info(f"Server started on port {PORT}")
 
     asyncio.create_task(check_ton_payments())
     asyncio.create_task(self_ping())
