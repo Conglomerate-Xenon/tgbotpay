@@ -7,27 +7,28 @@ from aiohttp import web, ClientSession
 from aiohttp.web import Response
 from dotenv import load_dotenv
 
-# Загрузка переменных из .env
+# Загрузка .env
 load_dotenv()
-print("BOT_TOKEN:", BOT_TOKEN)
+
+# Получение переменных окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+TON_ADDRESS = os.getenv("TON_ADDRESS")
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
+PORT = int(os.getenv("PORT", 10000))
+
+# Проверка, если токен не найден
 if not BOT_TOKEN:
-    raise RuntimeError("❌ BOT_TOKEN не найден в .env. Проверь файл и переменные окружения.")
+    raise RuntimeError("❌ BOT_TOKEN не найден. Убедитесь, что он задан в .env или через Render Environment.")
 
-
-# Настройка логов
+# Логирование
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Конфигурация из переменных окружения
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-TON_ADDRESS = os.getenv("TON_ADDRESS")
-WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-PORT = int(os.getenv("PORT", 10000))
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
@@ -104,7 +105,7 @@ async def self_ping():
                     logger.info(f"Ping result: {resp.status}")
         except Exception as e:
             logger.error(f"Ping failed: {e}")
-        await asyncio.sleep(600)
+        await asyncio.sleep(300)
 
 # Проверка оплат TON
 async def check_ton_payments():
