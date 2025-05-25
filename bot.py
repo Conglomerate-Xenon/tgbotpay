@@ -67,7 +67,6 @@ async def pay_stars(message: types.Message):
 
     if users[user_id]["stars"] >= 60:
         users[user_id]["stars"] -= 60
-        save_users()
         await message.answer("✨ Оплата 60 звёздами прошла успешно! Спасибо!")
     else:
         await message.answer(
@@ -120,7 +119,7 @@ async def check_ton_payments():
                         await bot.send_message(int(user_id), f"💸 Получено {delta} TON. Спасибо за оплату!")
                     except Exception as e:
                         logger.error(f"Не удалось отправить сообщение {user_id}: {e}")
-                save_users()
+                
 
         except Exception as e:
             logger.error(f"TON CHECK ERROR: {e}")
