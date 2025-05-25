@@ -36,7 +36,6 @@ async def start(message: types.Message):
     user_id = str(message.from_user.id)
     if user_id not in users:
         users[user_id] = {"stars": 0, "ton_paid": 0}
-        save_users()
     await message.answer(
     "🤖 <b>Бот активен!</b>\n\n"
     "✨ <b>Команды:</b>\n"
