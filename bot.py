@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 
 # Загрузка переменных из .env
 load_dotenv()
+print("BOT_TOKEN:", BOT_TOKEN)
+if not BOT_TOKEN:
+    raise RuntimeError("❌ BOT_TOKEN не найден в .env. Проверь файл и переменные окружения.")
+
 
 # Настройка логов
 logging.basicConfig(
