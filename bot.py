@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 
 # Конфигурация
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8085507188:AAFbQP91yzQXXiGa8frag59YTtmeyvHNhrg")
-TON_ADDRESS = os.getenv("TON_ADDRESS", "UQDFx5huuwaQge8xCxkjF4P80ZwvV23zphnCPwYF4XtOYkXs") 
+TON_ADDRESS = os.getenv("TON_ADDRESS", "UQDFx5huuwaQge8xCxkjF4P80ZwvV23zphnCPwYF4XtOYkXs")
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://tgbotpay.onrender.com")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-# Инициализация бота
+# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
@@ -36,15 +36,14 @@ async def start(message: types.Message):
     if user_id not in users:
         users[user_id] = {"stars": 0, "ton_paid": 0}
     await message.answer(
-    "🤖 <b>Бот активен!</b>\n\n"
-    "✨ <b>Команды:</b>\n"
-    "/pay_ton – оплатить в TON 💵\n"
-    "/pay_stars – оплатить звёздами ✨\n"
-    "/stars – показать баланс 📊\n"
-    "/ping – проверить работу бота 🏓",
-    parse_mode="HTML"
-)
-
+        "🤖 <b>Бот активен!</b>\n\n"
+        "✨ <b>Команды:</b>\n"
+        "💵 /pay_ton – оплатить в TON\n"
+        "🌟 /pay_stars – оплатить звёздами\n"
+        "📊 /stars – показать баланс\n"
+        "🏓 /ping – проверить работу бота",
+        parse_mode="HTML"
+    )
 
 @dp.message_handler(commands=['ping'])
 async def ping(message: types.Message):
@@ -53,9 +52,9 @@ async def ping(message: types.Message):
 @dp.message_handler(commands=['pay_ton'])
 async def pay_ton(message: types.Message):
     await message.answer(
-        f"\U0001F4B3 Отправь 0.45 TON на адрес:\n`{TON_ADDRESS}`\n"
-        f"Я засчитаю оплату автоматически. \U0001F4B8",
-        parse_mode="Markdown"
+        f"💳 Отправь <b>0.45 TON</b> на адрес:\n<code>{TON_ADDRESS}</code>\n"
+        f"Я засчитаю оплату автоматически 💸",
+        parse_mode="HTML"
     )
 
 @dp.message_handler(commands=['pay_stars'])
@@ -66,10 +65,10 @@ async def pay_stars(message: types.Message):
 
     if users[user_id]["stars"] >= 60:
         users[user_id]["stars"] -= 60
-        await message.answer("✨ Оплата 60 звёздами прошла успешно! Спасибо!")
+        await message.answer("🌟 Оплата 60 звёздами прошла успешно! Спасибо!")
     else:
         await message.answer(
-            f"\u274C Недостаточно звёзд! Нужно 60 ✨ (у тебя {users[user_id]['stars']})"
+            f"❌ Недостаточно звёзд! Нужно 60 ✨ (у тебя {users[user_id]['stars']})"
         )
 
 @dp.message_handler(commands=['stars'])
@@ -77,15 +76,15 @@ async def show_stars(message: types.Message):
     user_id = str(message.from_user.id)
     data = users.get(user_id, {"stars": 0, "ton_paid": 0})
     await message.answer(
-        f"\U0001F4CA *Твои балансы:*\n"
-        f"- ✨ Звёзды: {data['stars']}\n"
-        f"- 💎 Оплачено TON: {data['ton_paid']}",
-        parse_mode="Markdown"
+        f"📊 <b>Твои балансы:</b>\n"
+        f"✨ Звёзды: {data['stars']}\n"
+        f"💎 Оплачено TON: {data['ton_paid']}",
+        parse_mode="HTML"
     )
 
 @dp.message_handler()
 async def fallback(message: types.Message):
-    await message.answer("\u2139\ufe0f Используй команды: /pay_ton, /pay_stars, /stars, /ping")
+    await message.answer("ℹ️ Используй команды: /pay_ton, /pay_stars, /stars, /ping")
 
 # Пинг каждые 10 минут
 async def self_ping():
@@ -104,7 +103,9 @@ async def check_ton_payments():
     while True:
         try:
             async with ClientSession() as session:
-                async with session.get(f"https://toncenter.com/api/v2/getAddressBalance?address={TON_ADDRESS}", timeout=5) as resp:
+                async with session.get(
+                    f"https://toncenter.com/api/v2/getAddressBalance?address={TON_ADDRESS}", timeout=5
+                ) as resp:
                     result = await resp.json()
                     balance = int(result["result"]) / 1e9
 
@@ -115,10 +116,12 @@ async def check_ton_payments():
                 for user_id in users:
                     users[user_id]["ton_paid"] += delta
                     try:
-                        await bot.send_message(int(user_id), f"💸 Получено {delta} TON. Спасибо за оплату!")
+                        await bot.send_message(
+                            int(user_id),
+                            f"💸 Получено {delta} TON. Спасибо за оплату!"
+                        )
                     except Exception as e:
                         logger.error(f"Не удалось отправить сообщение {user_id}: {e}")
-                
 
         except Exception as e:
             logger.error(f"TON CHECK ERROR: {e}")
@@ -130,19 +133,15 @@ async def webhook_handler(request):
         data = await request.json()
         logger.info(f"Received update: {data}")
 
+        from aiogram import Bot  # для set_current
+        Bot.set_current(bot)  # ✅ Исправление ошибки context
         update = types.Update(**data)
-        asyncio.create_task(process_update_safely(update))
+        await dp.process_update(update)
 
         return Response(text="OK")
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return Response(text="OK")
-
-async def process_update_safely(update: types.Update):
-    try:
-        await dp.process_update(update)
-    except Exception as e:
-        logger.error(f"Update processing failed: {e}")
 
 # Запуск сервера
 async def start_server():
@@ -175,3 +174,4 @@ if __name__ == "__main__":
         logger.info("Server stopped")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
+
