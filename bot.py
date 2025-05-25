@@ -1,10 +1,10 @@
 import os
+import json
+import logging
+import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiohttp import web
-import requests
-import asyncio
-import logging
+from aiohttp import web, ClientSession
 from aiohttp.web import Response
 
 # Настройка логов
@@ -23,7 +23,7 @@ WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 # Инициализация бота
 bot = Bot(token=BOT_TOKEN)
-Bot.set_current(bot)  # ВАЖНО: устанавливаем текущий бот
+Bot.set_current(bot)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
@@ -31,69 +31,99 @@ dp = Dispatcher(bot, storage=storage)
 users = {}
 last_balance = 0
 
-# Обработчики команд
+# Загрузка пользователей из файла
+def load_users():
+    if os.path.exists("users.json"):
+        with open("users.json", "r") as f:
+            return json.load(f)
+    return {}
+
+# Сохранение пользователей
+def save_users():
+    with open("users.json", "w") as f:
+        json.dump(users, f)
+
+users = load_users()
+
+# Команды
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
     if user_id not in users:
         users[user_id] = {"stars": 0, "ton_paid": 0}
+        save_users()
     await message.answer(
-    "Бот работает! Команды:\n\n"
-    "/pay_ton – оплатить в TON\n"
-    "/pay_stars – оплатить звёздами\n"
-    "/stars – показать баланс\n"
-    "/ping – проверить работу бота"
-)
-
+        "\U0001F916 *Бот активен!*\n\n"
+        "\u2728 Команды:\n"
+        "`/pay_ton` – оплатить в TON \U0001F4B5\n"
+        "`/pay_stars` – оплатить звёздами ✨\n"
+        "`/stars` – показать баланс \U0001F4CA\n"
+        "`/ping` – проверить работу бота \U0001F3D3",
+        parse_mode="Markdown"
+    )
 
 @dp.message_handler(commands=['ping'])
 async def ping(message: types.Message):
-    await message.answer("🏓 Pong! Бот активен")
+    await message.answer("🏓 Pong! Бот на связи!")
 
 @dp.message_handler(commands=['pay_ton'])
 async def pay_ton(message: types.Message):
     await message.answer(
-        f"Отправь оплату 0.45 TON на адрес:\n`{TON_ADDRESS}`\n"
-        f"Я засчитаю оплату автоматически.",
+        f"\U0001F4B3 Отправь 0.45 TON на адрес:\n`{TON_ADDRESS}`\n"
+        f"Я засчитаю оплату автоматически. \U0001F4B8",
         parse_mode="Markdown"
     )
 
 @dp.message_handler(commands=['pay_stars'])
 async def pay_stars(message: types.Message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
     if user_id not in users:
         users[user_id] = {"stars": 0, "ton_paid": 0}
 
     if users[user_id]["stars"] >= 60:
         users[user_id]["stars"] -= 60
-        await message.answer("✨ Оплата 60 звёздами прошла успешно!")
+        save_users()
+        await message.answer("✨ Оплата 60 звёздами прошла успешно! Спасибо!")
     else:
         await message.answer(
-            f"Недостаточно звёзд! Нужно 60 ✨ (у вас {users[user_id]['stars']})"
+            f"\u274C Недостаточно звёзд! Нужно 60 ✨ (у тебя {users[user_id]['stars']})"
         )
 
 @dp.message_handler(commands=['stars'])
 async def show_stars(message: types.Message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
     data = users.get(user_id, {"stars": 0, "ton_paid": 0})
     await message.answer(
-        f"🌟 Твои балансы:\n"
-        f"- Звёзды: {data['stars']} ✨\n"
-        f"- Оплачено TON: {data['ton_paid']} TON"
+        f"\U0001F4CA *Твои балансы:*\n"
+        f"- ✨ Звёзды: {data['stars']}\n"
+        f"- 💎 Оплачено TON: {data['ton_paid']}",
+        parse_mode="Markdown"
     )
 
 @dp.message_handler()
 async def fallback(message: types.Message):
-    await message.answer("Используй команды:\n/pay_ton\n/pay_stars\n/stars\n/ping")
+    await message.answer("\u2139\ufe0f Используй команды: /pay_ton, /pay_stars, /stars, /ping")
 
-# === Фоновая задача: отслеживание TON ===
+# Пинг каждые 10 минут
+async def self_ping():
+    while True:
+        try:
+            async with ClientSession() as session:
+                async with session.get(WEBHOOK_HOST) as resp:
+                    logger.info(f"Ping result: {resp.status}")
+        except Exception as e:
+            logger.error(f"Ping failed: {e}")
+        await asyncio.sleep(600)
+
+# Проверка оплат TON
 async def check_ton_payments():
     global last_balance
     while True:
         try:
-            url = f"https://toncenter.com/api/v2/getAddressBalance?address={TON_ADDRESS}"
-            response = requests.get(url, timeout=5).json()
-            balance = int(response["result"]) / 1e9
+            async with ClientSession() as session:
+                async with session.get(f"https://toncenter.com/api/v2/getAddressBalance?address={TON_ADDRESS}", timeout=5) as resp:
+                    result = await resp.json()
+                    balance = int(result["result"]) / 1e9
 
             if balance > last_balance:
                 delta = round(balance - last_balance, 4)
@@ -102,23 +132,24 @@ async def check_ton_payments():
                 for user_id in users:
                     users[user_id]["ton_paid"] += delta
                     try:
-                        await bot.send_message(user_id, f"💸 Получено {delta} TON. Спасибо за оплату!")
+                        await bot.send_message(int(user_id), f"💸 Получено {delta} TON. Спасибо за оплату!")
                     except Exception as e:
                         logger.error(f"Не удалось отправить сообщение {user_id}: {e}")
+                save_users()
 
         except Exception as e:
             logger.error(f"TON CHECK ERROR: {e}")
         await asyncio.sleep(10)
 
-# Улучшенный обработчик вебхуков
+# Обработка вебхуков
 async def webhook_handler(request):
     try:
         data = await request.json()
         logger.info(f"Received update: {data}")
-        
+
         update = types.Update(**data)
         asyncio.create_task(process_update_safely(update))
-        
+
         return Response(text="OK")
     except Exception as e:
         logger.error(f"Webhook error: {e}")
@@ -134,25 +165,23 @@ async def process_update_safely(update: types.Update):
 async def start_server():
     app = web.Application()
     app.router.add_post(WEBHOOK_PATH, webhook_handler)
-    
-    # Установка вебхука
+
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     logger.info(f"Webhook set to {WEBHOOK_URL}")
-    
+
     runner = web.AppRunner(app)
     await runner.setup()
-    
+
     port = int(os.getenv("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    
+
     logger.info(f"Server started on port {port}")
 
-    # Запуск фоновой задачи
     asyncio.create_task(check_ton_payments())
+    asyncio.create_task(self_ping())
 
-    # Бесконечный цикл
     while True:
         await asyncio.sleep(3600)
 
