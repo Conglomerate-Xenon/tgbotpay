@@ -8,8 +8,7 @@ from aiohttp import web, ClientSession
 from aiohttp.web_response import Response
 from dotenv import load_dotenv
 
-from db import init_db, add_user, get_random_question, update_score, get_top_users
-
+from db import init_db, add_user, get_random_question, update_score, get_top_users, seed_questions
 # Загрузка переменных окружения
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -136,6 +135,7 @@ async def start_server():
 
 # Запуск
 if __name__ == "__main__":
+    seed_questions()
     try:
         asyncio.run(start_server())
     except KeyboardInterrupt:
