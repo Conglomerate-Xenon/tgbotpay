@@ -27,6 +27,8 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 init_db()
 
+Bot.set_current(bot)
+
 # Словарь для хранения состояния пользователя (текущий вопрос)
 user_states = {}
 
@@ -101,6 +103,7 @@ async def self_ping():
 # Обработка входящих вебхуков
 async def webhook_handler(request):
     try:
+        Bot.set_current(bot)  # <-- Добавь эту строку
         data = await request.json()
         update = types.Update(**data)
         await dp.process_update(update)
@@ -108,6 +111,7 @@ async def webhook_handler(request):
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return Response(text="ERROR")
+
 
 # Запуск сервера
 async def start_server():
