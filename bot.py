@@ -3,10 +3,11 @@ import logging
 import os
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, BotCommand
 from aiohttp import web, ClientSession
 from aiohttp.web_response import Response
 from dotenv import load_dotenv
+from aiogram.dispatcher import FSMContext
 
 from db import init_db, add_user, get_random_question, update_score, get_top_users, seed_questions
 # Загрузка переменных окружения
@@ -31,12 +32,26 @@ Bot.set_current(bot)
 # Словарь для хранения состояния пользователя (текущий вопрос)
 user_states = {}
 
+async def set_commands(bot):
+    commands = [
+        BotCommand(command="/quiz", description="Начать квиз"),
+        BotCommand(command="/stop", description="Остановить квиз"),
+        BotCommand(command="/top", description="Посмотреть статистику"),
+    ]
+    await bot.set_my_commands(commands)
+
 # Команда /start
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     add_user(message.from_user.id, message.from_user.username or "Anon")
     await message.answer("👋 Добро пожаловать в Квиз-Битву! Напиши /quiz чтобы начать.")
-
+    
+# Команда /stop    
+@dp.message_handler(commands=['stop'], state="*")
+async def stop_quiz(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.answer("Квиз остановлен. Чтобы начать заново — нажмите /start.")
+    
 # Команда /quiz
 @dp.message_handler(commands=["quiz"])
 async def quiz(message: types.Message):
@@ -64,6 +79,10 @@ async def top(message: types.Message):
     for i, (username, score) in enumerate(top_users, 1):
         msg += f"{i}. {username} — {score} очков\n"
     await message.answer(msg)
+    
+@dp.message_handler(commands=["help"])
+async def help_cmd(message: types.Message):
+    await message.answer("📋 Доступные команды:\n/quiz — начать квиз\n/stop — остановить квиз\n/top — рейтинг игроков")
 
 # Обработка ответа пользователя
 @dp.message_handler()
@@ -119,6 +138,7 @@ async def start_server():
 
     # Установка вебхука Telegram
     await bot.delete_webhook()
+    await set_commands(bot)
     await bot.set_webhook(WEBHOOK_URL)
     logger.info(f"Webhook set to {WEBHOOK_URL}")
 
